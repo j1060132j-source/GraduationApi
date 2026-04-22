@@ -14,7 +14,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql("postgresql://neondb_owner:npg_hfVjSzT4n1dt@ep-patient-mountain-ao08zl8r.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"));
+    options.UseNpgsql("Host=ep-patient-mountain-ao08zl8r.c-2.ap-southeast-1.aws.neon.tech;Database=neondb;Username=neondb_owner;Password=npg_hfVjSzT4n1dt;SslMode=Require;"));
 
 var app = builder.Build();
 
