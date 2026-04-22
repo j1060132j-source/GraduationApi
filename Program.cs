@@ -14,7 +14,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=stamps.db"));
+    options.UseNpgsql("postgresql://neondb_owner:npg_hfVjSzT4n1dt@ep-patient-mountain-ao08zl8r.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"));
 
 var app = builder.Build();
 
