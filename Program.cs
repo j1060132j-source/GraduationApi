@@ -20,6 +20,21 @@ var app = builder.Build();
 
 // [新增] 2. 啟用 CORS (必須放在 builder.Build() 之後)
 app.UseCors("AllowAll");
+// [新增] 終極 CORS 攔截器：專治 Safari 的囉嗦檢查
+// ==========================================
+app.Use(async (context, next) =>
+{
+    if (context.Request.Method == "OPTIONS")
+    {
+        context.Response.Headers["Access-Control-Allow-Origin"] = "*";
+        context.Response.Headers["Access-Control-Allow-Headers"] = "*";
+        context.Response.Headers["Access-Control-Allow-Methods"] = "*";
+        context.Response.StatusCode = 200;
+        return; // 直接秒退回 200 OK，不再往下跑
+    }
+    await next();
+});
+// ==========================================
 
 using (var scope = app.Services.CreateScope())
 {
