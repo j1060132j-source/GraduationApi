@@ -55,14 +55,29 @@ app.MapGet("/api/progress/{studentId}", (string studentId, AppDbContext db) =>
 
 app.MapPost("/api/stamp", (StampRequest req, AppDbContext db) =>
 {
-    var exists = db.StampRecords.Any(r => r.StudentId == req.StudentId && r.StationId == req.StationId);
-    if (exists) return Results.BadRequest(new { Message = "這關你已經集過囉！" });
+    try
+    {
+        var exists = db.StampRecords.Any(r => r.StudentId == req.StudentId && r.StationId == req.StationId);
+        if (exists) return Results.BadRequest(new { Message = "這關你已經集過囉！" });
 
-    var newRecord = new StampRecord { StudentId = req.StudentId, StationId = req.StationId, ScanTime = DateTime.Now };
-    db.StampRecords.Add(newRecord);
-    db.SaveChanges();
+        // 【終極修復】PostgreSQL 拒絕接受 DateTime.Now，必須強制改用 DateTime.UtcNow！
+        var newRecord = new StampRecord
+        {
+            StudentId = req.StudentId,
+            StationId = req.StationId,
+            ScanTime = DateTime.UtcNow
+        };
 
-    return Results.Ok(new { Message = "集章成功！", Station = req.StationId });
+        db.StampRecords.Add(newRecord);
+        db.SaveChanges(); // 剛剛就是死在這裡，現在換成 UtcNow 就會暢通無阻！
+
+        return Results.Ok(new { Message = "集章成功！", Station = req.StationId });
+    }
+    catch (Exception ex)
+    {
+        // 加上防彈衣：如果未來還有錯，把真實錯誤包裝成 JSON 傳給前端，避免觸發 Load failed
+        return Results.Json(new { Message = $"寫入失敗: {ex.Message}" }, statusCode: 500);
+    }
 });
 
 app.Run();
