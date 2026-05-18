@@ -81,11 +81,11 @@ app.MapPost("/api/stamp", (StampRequest req, AppDbContext db) =>
 });
 
 // ==========================================
-// [新增] 學姊專用：B11 秘密後台看板
+// [修正版] 學姊專用：B11 秘密後台看板 (含名次、越早越靠前)
 // ==========================================
 app.MapGet("/b11-admin-secret-view", (AppDbContext db) =>
 {
-    // 1. 透過 EF Core 從資料庫撈取並分組統計
+    // 💡 核心排序修正：先比總章數(多到少)，再比最後更新時間(OrderBy 升冪 = 越早越前面)
     var stats = db.StampRecords
         .GroupBy(r => r.StudentId)
         .Select(g => new
@@ -95,24 +95,27 @@ app.MapGet("/b11-admin-secret-view", (AppDbContext db) =>
             LastUpdate = g.Max(r => r.ScanTime)
         })
         .OrderByDescending(x => x.TotalStamps)
-        .ThenByDescending(x => x.LastUpdate)
+        .ThenBy(x => x.LastUpdate) // 👈 關鍵修正：由 ThenByDescending 改為 ThenBy
         .ToList();
 
-    // 2. 組裝 HTML 畫面
     var html = @"
     <!DOCTYPE html>
     <html>
     <head>
-        <title>B11 實境解謎 - 後台看版</title>
+        <title>實境解謎 - 後台看版</title>
         <meta name='viewport' content='width=device-width, initial-scale=1'>
         <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #0f172a; color: #f8fafc; }
             h2 { color: #60a5fa; text-align: center; letter-spacing: 2px; }
-            table { width: 100%; max-width: 600px; margin: 0 auto; border-collapse: collapse; background: #1e293b; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-radius: 12px; overflow: hidden; border: 1px solid #334155; }
+            table { width: 100%; max-width: 650px; margin: 0 auto; border-collapse: collapse; background: #1e293b; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-radius: 12px; overflow: hidden; border: 1px solid #334155; }
             th, td { padding: 15px; text-align: center; border-bottom: 1px solid #334155; }
             th { background-color: #1e3a8a; color: #bfdbfe; font-weight: bold; letter-spacing: 1px; }
             tr:hover { background-color: #334155; }
             .complete { color: #fbbf24; font-weight: 900; text-shadow: 0 0 10px rgba(251,191,36,0.4); }
+            .rank-badge { display: inline-block; width: 24px; height: 24px; line-height: 24px; border-radius: 50%; font-weight: bold; }
+            .rank-1 { background: #f59e0b; color: #1e293b; } /* 金牌 */
+            .rank-2 { background: #94a3b8; color: #1e293b; } /* 銀牌 */
+            .rank-3 { background: #b45309; color: #f8fafc; } /* 銅牌 */
         </style>
     </head>
     <body>
@@ -120,30 +123,36 @@ app.MapGet("/b11-admin-secret-view", (AppDbContext db) =>
         <table>
             <thead>
                 <tr>
-                    <th>學號</th>
-                    <th>已集章數</th>
-                    <th>最後更新時間</th>
+                    <th style='width: 15%'>名次</th>
+                    <th style='width: 30%'>學號</th>
+                    <th style='width: 25%'>已集章數</th>
+                    <th style='width: 30%'>最後更新時間</th>
                 </tr>
             </thead>
             <tbody>
     ";
 
-    // 3. 把每一筆資料塞進表格裡
+    int rank = 1; // 👈 宣告名次計數器
     foreach (var stat in stats)
     {
-        // 你的資料庫是存 UTC 時間，這裡幫學姊轉回台灣時間 (+8) 顯示才不會錯亂
         var taiwanTime = stat.LastUpdate.AddHours(8).ToString("yyyy/MM/dd HH:mm:ss");
-
-        // 滿 8 章顯示金色破關特效
         var stampText = stat.TotalStamps >= 8 ? "<span class='complete'>👑 8 (已破關)</span>" : stat.TotalStamps.ToString();
+
+        // 幫前三名做個漂亮的徽章樣式
+        string rankDisplay = rank.ToString();
+        if (rank == 1) rankDisplay = "<span class='rank-badge rank-1'>1</span>";
+        else if (rank == 2) rankDisplay = "<span class='rank-badge rank-2'>2</span>";
+        else if (rank == 3) rankDisplay = "<span class='rank-badge rank-3'>3</span>";
 
         html += $@"
             <tr>
+                <td>{rankDisplay}</td>
                 <td style='font-weight: bold;'>{stat.StudentId}</td>
                 <td>{stampText}</td>
                 <td style='font-size: 0.85em; color: #94a3b8;'>{taiwanTime}</td>
             </tr>
         ";
+        rank++; // 進入下一圈迴圈，名次自動加 1
     }
 
     html += @"
@@ -153,17 +162,12 @@ app.MapGet("/b11-admin-secret-view", (AppDbContext db) =>
     </html>
     ";
 
-    // 4. 回傳網頁格式
     return Results.Content(html, "text/html; charset=utf-8");
 });
-// ==========================================
 
-// ==========================================
-// [新增] 學姊專用：B11 秘密後台看板 (詳細查帳版)
-// ==========================================
 app.MapGet("/b11-admin-secret-detail", (AppDbContext db) =>
 {
-    // 1. 撈取資料，並把每個人的「所有集章紀錄」都抓出來包在一起
+    // 💡 詳細查帳版同步修正排序邏輯
     var stats = db.StampRecords
         .GroupBy(r => r.StudentId)
         .Select(g => new
@@ -171,49 +175,49 @@ app.MapGet("/b11-admin-secret-detail", (AppDbContext db) =>
             StudentId = g.Key,
             TotalStamps = g.Count(),
             LastUpdate = g.Max(r => r.ScanTime),
-            // 把這個人的所有印章依照關卡 1~8 排序抓出來
             Records = g.OrderBy(r => r.StationId).Select(r => new { r.StationId, r.ScanTime }).ToList()
         })
         .OrderByDescending(x => x.TotalStamps)
-        .ThenByDescending(x => x.LastUpdate)
+        .ThenBy(x => x.LastUpdate) // 👈 同步修正為 ThenBy 升冪
         .ToList();
 
     var html = @"
     <!DOCTYPE html>
     <html>
     <head>
-        <title>B11 實境解謎 - 詳細戰況查帳</title>
+        <title>實境解謎 - 詳細戰況查詢</title>
         <meta name='viewport' content='width=device-width, initial-scale=1'>
         <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #0f172a; color: #f8fafc; }
             h2 { color: #818cf8; text-align: center; letter-spacing: 2px; }
-            table { width: 100%; max-width: 900px; margin: 0 auto; border-collapse: collapse; background: #1e293b; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-radius: 12px; overflow: hidden; border: 1px solid #334155; }
+            table { width: 100%; max-width: 950px; margin: 0 auto; border-collapse: collapse; background: #1e293b; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-radius: 12px; overflow: hidden; border: 1px solid #334155; }
             th, td { padding: 15px; text-align: left; border-bottom: 1px solid #334155; line-height: 1.6; }
             th { background-color: #312e81; color: #c7d2fe; font-weight: bold; text-align: center; }
             tr:hover { background-color: #334155; }
             .complete { color: #fbbf24; font-weight: 900; }
-            /* 每一關的精美小標籤設計 */
             .detail-badge { display: inline-block; background: #3b82f6; color: white; padding: 4px 8px; border-radius: 6px; font-size: 0.8em; margin: 3px; border: 1px solid #60a5fa; }
+            .rank-text { font-weight: bold; text-align: center; color: #94a3b8; }
         </style>
     </head>
     <body>
-        <h2>🔍 集章詳細查帳系統</h2>
+        <h2>🔍 集章詳細查詢系統</h2>
         <table>
             <thead>
                 <tr>
+                    <th style='width: 10%'>名次</th>
                     <th style='width: 15%'>學號</th>
                     <th style='width: 15%'>總進度</th>
-                    <th style='width: 70%'>各關卡收集詳細時間</th>
+                    <th style='width: 60%'>各關卡收集詳細時間</th>
                 </tr>
             </thead>
             <tbody>
     ";
 
+    int rank = 1; // 👈 詳細版也加入名次計數器
     foreach (var stat in stats)
     {
         var stampText = stat.TotalStamps >= 8 ? "<span class='complete'>👑 8 (破關)</span>" : stat.TotalStamps.ToString();
 
-        // 把每一關的紀錄轉成精美的小標籤 HTML
         var detailsHtml = "";
         foreach (var r in stat.Records)
         {
@@ -223,11 +227,13 @@ app.MapGet("/b11-admin-secret-detail", (AppDbContext db) =>
 
         html += $@"
             <tr>
+                <td class='rank-text'>{rank}</td>
                 <td style='font-weight: bold; text-align: center;'>{stat.StudentId}</td>
                 <td style='text-align: center;'>{stampText}</td>
                 <td>{detailsHtml}</td>
             </tr>
         ";
+        rank++;
     }
 
     html += @"
