@@ -80,6 +80,84 @@ app.MapPost("/api/stamp", (StampRequest req, AppDbContext db) =>
     }
 });
 
+// ==========================================
+// [新增] 學姊專用：B11 秘密後台看板
+// ==========================================
+app.MapGet("/b11-admin-secret-view", (AppDbContext db) =>
+{
+    // 1. 透過 EF Core 從資料庫撈取並分組統計
+    var stats = db.StampRecords
+        .GroupBy(r => r.StudentId)
+        .Select(g => new
+        {
+            StudentId = g.Key,
+            TotalStamps = g.Count(),
+            LastUpdate = g.Max(r => r.ScanTime)
+        })
+        .OrderByDescending(x => x.TotalStamps)
+        .ThenByDescending(x => x.LastUpdate)
+        .ToList();
+
+    // 2. 組裝 HTML 畫面
+    var html = @"
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>B11 實境解謎 - 後台看版</title>
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #0f172a; color: #f8fafc; }
+            h2 { color: #60a5fa; text-align: center; letter-spacing: 2px; }
+            table { width: 100%; max-width: 600px; margin: 0 auto; border-collapse: collapse; background: #1e293b; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-radius: 12px; overflow: hidden; border: 1px solid #334155; }
+            th, td { padding: 15px; text-align: center; border-bottom: 1px solid #334155; }
+            th { background-color: #1e3a8a; color: #bfdbfe; font-weight: bold; letter-spacing: 1px; }
+            tr:hover { background-color: #334155; }
+            .complete { color: #fbbf24; font-weight: 900; text-shadow: 0 0 10px rgba(251,191,36,0.4); }
+        </style>
+    </head>
+    <body>
+        <h2>🔍 B11 集章即時戰況</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>學號</th>
+                    <th>已集章數</th>
+                    <th>最後更新時間</th>
+                </tr>
+            </thead>
+            <tbody>
+    ";
+
+    // 3. 把每一筆資料塞進表格裡
+    foreach (var stat in stats)
+    {
+        // 你的資料庫是存 UTC 時間，這裡幫學姊轉回台灣時間 (+8) 顯示才不會錯亂
+        var taiwanTime = stat.LastUpdate.AddHours(8).ToString("yyyy/MM/dd HH:mm:ss");
+
+        // 滿 8 章顯示金色破關特效
+        var stampText = stat.TotalStamps >= 8 ? "<span class='complete'>👑 8 (已破關)</span>" : stat.TotalStamps.ToString();
+
+        html += $@"
+            <tr>
+                <td style='font-weight: bold;'>{stat.StudentId}</td>
+                <td>{stampText}</td>
+                <td style='font-size: 0.85em; color: #94a3b8;'>{taiwanTime}</td>
+            </tr>
+        ";
+    }
+
+    html += @"
+            </tbody>
+        </table>
+    </body>
+    </html>
+    ";
+
+    // 4. 回傳網頁格式
+    return Results.Content(html, "text/html; charset=utf-8");
+});
+// ==========================================
+
 app.Run();
 
 class AppDbContext : DbContext
