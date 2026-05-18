@@ -116,7 +116,7 @@ app.MapGet("/b11-admin-secret-view", (AppDbContext db) =>
         </style>
     </head>
     <body>
-        <h2>🔍 B11 集章即時戰況</h2>
+        <h2>🔍 集章即時戰況</h2>
         <table>
             <thead>
                 <tr>
@@ -154,6 +154,89 @@ app.MapGet("/b11-admin-secret-view", (AppDbContext db) =>
     ";
 
     // 4. 回傳網頁格式
+    return Results.Content(html, "text/html; charset=utf-8");
+});
+// ==========================================
+
+// ==========================================
+// [新增] 學姊專用：B11 秘密後台看板 (詳細查帳版)
+// ==========================================
+app.MapGet("/b11-admin-secret-detail", (AppDbContext db) =>
+{
+    // 1. 撈取資料，並把每個人的「所有集章紀錄」都抓出來包在一起
+    var stats = db.StampRecords
+        .GroupBy(r => r.StudentId)
+        .Select(g => new
+        {
+            StudentId = g.Key,
+            TotalStamps = g.Count(),
+            LastUpdate = g.Max(r => r.ScanTime),
+            // 把這個人的所有印章依照關卡 1~8 排序抓出來
+            Records = g.OrderBy(r => r.StationId).Select(r => new { r.StationId, r.ScanTime }).ToList()
+        })
+        .OrderByDescending(x => x.TotalStamps)
+        .ThenByDescending(x => x.LastUpdate)
+        .ToList();
+
+    var html = @"
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>B11 實境解謎 - 詳細戰況查帳</title>
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #0f172a; color: #f8fafc; }
+            h2 { color: #818cf8; text-align: center; letter-spacing: 2px; }
+            table { width: 100%; max-width: 900px; margin: 0 auto; border-collapse: collapse; background: #1e293b; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-radius: 12px; overflow: hidden; border: 1px solid #334155; }
+            th, td { padding: 15px; text-align: left; border-bottom: 1px solid #334155; line-height: 1.6; }
+            th { background-color: #312e81; color: #c7d2fe; font-weight: bold; text-align: center; }
+            tr:hover { background-color: #334155; }
+            .complete { color: #fbbf24; font-weight: 900; }
+            /* 每一關的精美小標籤設計 */
+            .detail-badge { display: inline-block; background: #3b82f6; color: white; padding: 4px 8px; border-radius: 6px; font-size: 0.8em; margin: 3px; border: 1px solid #60a5fa; }
+        </style>
+    </head>
+    <body>
+        <h2>🔍 集章詳細查帳系統</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style='width: 15%'>學號</th>
+                    <th style='width: 15%'>總進度</th>
+                    <th style='width: 70%'>各關卡收集詳細時間</th>
+                </tr>
+            </thead>
+            <tbody>
+    ";
+
+    foreach (var stat in stats)
+    {
+        var stampText = stat.TotalStamps >= 8 ? "<span class='complete'>👑 8 (破關)</span>" : stat.TotalStamps.ToString();
+
+        // 把每一關的紀錄轉成精美的小標籤 HTML
+        var detailsHtml = "";
+        foreach (var r in stat.Records)
+        {
+            var tTime = r.ScanTime.AddHours(8).ToString("HH:mm:ss");
+            detailsHtml += $"<span class='detail-badge'>第 {r.StationId} 關: {tTime}</span>";
+        }
+
+        html += $@"
+            <tr>
+                <td style='font-weight: bold; text-align: center;'>{stat.StudentId}</td>
+                <td style='text-align: center;'>{stampText}</td>
+                <td>{detailsHtml}</td>
+            </tr>
+        ";
+    }
+
+    html += @"
+            </tbody>
+        </table>
+    </body>
+    </html>
+    ";
+
     return Results.Content(html, "text/html; charset=utf-8");
 });
 // ==========================================
